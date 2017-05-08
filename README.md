@@ -1,9 +1,8 @@
 # SimpleRSIandEyeDefender
 
-Freeze screen `x`(seconds) every `y`(minutes) and `z`(minutes) every `t`(hour).
+Freeze screen `smallBreak`(seconds) every `workTime`(minutes) and `largeBreak`(minutes) on the third smallBreak. My code is inspired by [workrave](http://www.workrave.org/), [slock](http://tools.suckless.org/slock/), and [i3lock](https://i3wm.org/i3lock/).
 
 Default values:
-- `x` = 30(seconds)
-- `y` = 10(minutes)
-- `z` = 10(minutes)
-- `t` = 1(hour)
+- `smallBreak` = 60(seconds)
+- `workTime` = 19(minutes)
+- `largeBreak` = 10(minutes)
