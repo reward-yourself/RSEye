@@ -18,7 +18,7 @@
  *      time.h does not respect system suspend?
  *      + Divide work time into smaller chunks
  *    Compilation: compile with gcc
- *    gcc `pkg-config --cflags -libs` xrender` RSEye.c -o rseye
+ *    gcc `pkg-config --cflags -libs` xrender` -lm RSEye.c -o rseye
  *
  * =====================================================================================
  */
@@ -251,10 +251,7 @@ main ( int argc, char *argv[] )
   unsigned int i = 0;
   unsigned int suspendTime = 0;
 
-  int run = 0;
-  while (run < 25) {
-    run++;
-
+  while (True) {
     suspendTime = 0;
 
     // Working time: program sleeps for workTime minutes.
