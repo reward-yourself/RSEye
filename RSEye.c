@@ -279,9 +279,9 @@ main ( int argc, char *argv[] )
     pclose(fid);
     fid = NULL;
     if (argc == 2) {
-      printf("Do you want to kill all instances?[yn]: ");
+      printf("Do you want to kill all instances?[y]n: ");
       char c = getchar();
-      if (c == 'n') die("\n\tAborting current process!\n");
+      if ((c == 'n') || (count == 1)) die("\n\tAborting current process!\n");
       system("ps ax | awk '$5 ~ /[r]seye/ { system(\"kill -9 \"$1) }'");
     }
     if (count > 1) {
