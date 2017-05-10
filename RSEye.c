@@ -239,6 +239,7 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   return 0;
 }
 
+/* The following function is 99.99% from slock.c on suckless.org */
 static void 
 die(const char *errmsg, ...) 
 {
@@ -246,7 +247,7 @@ die(const char *errmsg, ...)
   va_start(ap, errmsg);
   vfprintf(stderr, errmsg, ap);
   va_end(ap);
-  fprintf(stderr, "\tUsage: \n\t\trseye -h -w worktime -s smallbreak -l largebreak -o logfile\n\n");
+  fprintf(stderr, "\tUsage: \n\t\trseye -k -w worktime -s smallbreak -l largebreak -o logfile\n\n");
   exit(1);
 }
 
@@ -255,25 +256,40 @@ main ( int argc, char *argv[] )
 {
   FILE *fid = NULL;
 
+  // Check if kill all
+  if (argc == 2) {
+    argv++;
+    if (argv[0][1] == '\0') die("\n\tError: Invalid arguments!\n");
+    if ((argv[0][0] != '-') || (argv[0][1] != 'k') || (argv[0][2] != '\0'))   // if not '-k' abort
+      die("\n\tError: Invalid arguments!\n");
+  }
+
   // Check if it is already running.
   fid = popen("ps ax | awk '$5 ~ /[r]seye/'", "r");
   if (fid != NULL) {
+    FILE *out = stderr;
     char str[100];
     int count = 0;
-    fprintf(stderr, "List of current rseye processes:\n");
+    if (argc == 2) out = stdout;
+    fprintf(out, "The following instances of rseye are running:\n");
     while (fgets(str, 100, fid)) {
-      fprintf(stderr, "%s", str);
+      fprintf(out, "%s", str);
       count++;
     }
     pclose(fid);
     fid = NULL;
+    if (argc == 2) {
+      printf("Do you want to kill all instances?[yn]: ");
+      char c = getchar();
+      if (c == 'n') die("\n\tAborting current process!\n");
+      system("ps ax | awk '$5 ~ /[r]seye/ { system(\"kill -9 \"$1) }'");
+    }
     if (count > 1) {
       die("\n\tError: Another instance of rseye is already running! Abort now!\n");
     }
   }
 
   // check arguments
-  if (argc == 2) die("");
   if (~argc & 1) die("\n\tError: Invalid number of arguments!\n");
   if (argc > 9) {
     die("\n\tError: Too many arguments!\n");
@@ -322,7 +338,7 @@ main ( int argc, char *argv[] )
   time_t endTime;
   time_t startTime = time(NULL);
   struct tm tm = *localtime(&startTime);
-  fprintf(fid, "Program starts on %s",  asctime(&tm));
+  fprintf(fid, "\nProgram starts on %s",  asctime(&tm));
   fprintf(fid, "  WorkTime   = %d (minutes).\n", workTime);
   fprintf(fid, "  SmallBreak = %d (seconds).\n", smallBreak);
   fprintf(fid, "  LargeBreak = %d (minutes).\n", largeBreak);
