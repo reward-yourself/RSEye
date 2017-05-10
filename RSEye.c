@@ -246,7 +246,7 @@ die(const char *errmsg, ...)
   va_start(ap, errmsg);
   vfprintf(stderr, errmsg, ap);
   va_end(ap);
-  fprintf(stderr, "\n\tUsage: \n\t\trseye -h -w worktime -s smallbreak -l largebreak -o logfile\n\n");
+  fprintf(stderr, "\tUsage: \n\t\trseye -h -w worktime -s smallbreak -l largebreak -o logfile\n\n");
   exit(1);
 }
 
@@ -254,6 +254,24 @@ int
 main ( int argc, char *argv[] )
 {
   FILE *fid = NULL;
+
+  // Check if it is already running.
+  fid = popen("ps ax | awk '$5 ~ /[r]seye/'", "r");
+  if (fid != NULL) {
+    char str[100];
+    int count = 0;
+    fprintf(stderr, "List of current rseye processes:\n");
+    while (fgets(str, 100, fid)) {
+      fprintf(stderr, "%s", str);
+      count++;
+    }
+    pclose(fid);
+    fid = NULL;
+    if (count > 1) {
+      die("\n\tError: Another instance of rseye is already running! Abort now!\n");
+    }
+  }
+
   // check arguments
   if (argc == 2) die("");
   if (~argc & 1) die("\n\tError: Invalid number of arguments!\n");
