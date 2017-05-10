@@ -25,6 +25,8 @@
 
 #include <X11/Xlib.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <math.h>
 #include <unistd.h>
 #include <time.h>
@@ -99,7 +101,7 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   radialGradient.inner.radius = XDoubleToFixed (0.0f);
   radialGradient.outer.x = XDoubleToFixed (ballRadius);
   radialGradient.outer.y = XDoubleToFixed (ballRadius);
-  radialGradient.outer.radius = XDoubleToFixed (1.3*ballRadius);
+  radialGradient.outer.radius = XDoubleToFixed (1.1*ballRadius);
 
   Picture gradientPict[NUMCOLS];
   for (i = 0; i < NUMCOLS; ++i) {
@@ -176,7 +178,7 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   int tmp;
   time_t startTime, endTime;
   startTime = time(NULL);
-  unsigned int suspendTime;
+  unsigned int actualTime;
   while (min | sec) {
     set = 0;
     tmp = sec;
@@ -224,12 +226,11 @@ lockscreen(unsigned int lengthOfBreak, int screen)
 
     // If the system happened to sleep during break time, count that
     // sleeping time as well.
-    suspendTime = (unsigned int)difftime(endTime, startTime);
-    if (suspendTime > lengthOfBreak) {
-      fprintf(stderr, "The system has slept for longer than the requested break time of %d seconds.\n", lengthOfBreak);
+    actualTime = (unsigned int)difftime(endTime, startTime);
+    if (actualTime > lengthOfBreak) {
       XRenderFreePicture(dpy, picture);
       XCloseDisplay(dpy);
-      return suspendTime - lengthOfBreak;
+      return actualTime - lengthOfBreak;
     }
   }
 
@@ -238,33 +239,115 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   return 0;
 }
 
+static void 
+die(const char *errmsg, ...) 
+{
+  va_list ap;
+  va_start(ap, errmsg);
+  vfprintf(stderr, errmsg, ap);
+  va_end(ap);
+  fprintf(stderr, "\n\tUsage: \n\t\trseye -h -w worktime -s smallbreak -l largebreak -o logfile\n\n");
+  exit(1);
+}
+
 int
 main ( int argc, char *argv[] )
 {
+  FILE *fid = NULL;
+  // check arguments
+  if (argc == 2) die("");
+  if (~argc & 1) die("\n\tError: Invalid number of arguments!\n");
+  if (argc > 9) {
+    die("\n\tError: Too many arguments!\n");
+  }
+  while (argc > 2) {
+    argc--; argv++;
+    if (argv[0][0] != '-') die("\n\tError: Something is wrong with the arguments!\n");
+    if (argv[0][1] == '\0') die("\n\tError: Something is wrong with the arguments!\n");
+    if (argv[0][2] != '\0') {
+      if ((fid != NULL) && (fid != stderr)) fclose(fid);
+      die("\n\tError: Invalid arguments!\n");
+    }
+
+    char argv_ = argv[0][1];
+    argv++, argc--;
+
+    int val = atoi(argv[0]);
+    if ((val <= 0) && argv_ != 'o') {
+      if ((fid != NULL) && (fid != stderr)) fclose(fid);
+      die("\n\tError: Time values must be positive integers!\n");
+    }
+
+    switch (argv_) {
+      case 'w':
+        workTime = val;
+        break;
+      case 's':
+        smallBreak = val;
+        break;
+      case 'l':
+        largeBreak = val;
+        break;
+      case 'o':
+        fid = fopen(argv[0], "a");
+        if (fid == NULL) die("\n\tError: Cannot open file %s!\n", argv[0]);
+        setbuf(fid, NULL);
+        break;
+      default:
+        if ((fid != NULL) && (fid != stderr)) fclose(fid);
+        die("\n\tError: Invalid arguments!\n");
+    }
+  }
+  if (fid == NULL) {
+    fid = stderr;
+  }
+  time_t endTime;
   time_t startTime = time(NULL);
   struct tm tm = *localtime(&startTime);
-  fprintf(stderr, "Program starts on %s\n",  asctime(&tm));
+  fprintf(fid, "Program starts on %s",  asctime(&tm));
+  fprintf(fid, "  WorkTime   = %d (minutes).\n", workTime);
+  fprintf(fid, "  SmallBreak = %d (seconds).\n", smallBreak);
+  fprintf(fid, "  LargeBreak = %d (minutes).\n", largeBreak);
+  fprintf(fid, "\n**** Start Logging! ****\n");
+
   unsigned int smallBreakCounter = 0;
+  unsigned int largeBreakCounter = 0;
   const unsigned int numberSubWorkTime = 4;
   const unsigned int subWorkTime = workTime*(60 / numberSubWorkTime);
-  const unsigned int maxSuspendTime = 60;
   unsigned int i = 0;
   unsigned int suspendTime = 0;
 
+  // Predefined sleep function does account for system sleep which is
+  // undesired. So, we need to use CLOCK_REALTIME.
+  struct timespec tp;
+
+  unsigned int workTimeNumber = 0;
   while (True) {
+    workTimeNumber++;
     suspendTime = 0;
 
     // Working time: program sleeps for workTime minutes.
     // workTime = subWorkTime * numberSubWorkTime
+    startTime = time(NULL);
+    tm = *localtime(&startTime);
+    fprintf(fid, "\nWorkTimeNumber %d  started on %s", workTimeNumber, asctime(&tm));
     i = 0;
     while (i < numberSubWorkTime) {
       startTime = time(NULL);
-      sleep(subWorkTime);
-      suspendTime = (unsigned int)difftime(time(NULL), startTime) - subWorkTime;
+      tm = *localtime(&startTime);
+      fprintf(fid, "   SubWorkTime %d  started on %s", i+1, asctime(&tm));
+      /*sleep(subWorkTime);*/
+      clock_gettime(CLOCK_REALTIME, &tp);
+      tp.tv_sec += subWorkTime;
+      clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &tp, NULL);
+      endTime = time(NULL);
+      tm = *localtime(&endTime);
+      fprintf(fid, "   SubWorkTime %d finished on %s", i+1, asctime(&tm));
+      suspendTime = (unsigned int)difftime(endTime, startTime) - subWorkTime;
 
       // If the system has been suspended for more than
-      // maxSuspendTime seconds, end the current break time.
-      if (suspendTime > maxSuspendTime)
+      // smallBreak seconds, end the current work time.
+      if (suspendTime > smallBreak)
         break;
       else
         i++;
@@ -273,39 +356,43 @@ main ( int argc, char *argv[] )
     // If the system has been suspended for longer than largeBreak, we
     // assume that largeBreak is done.
     if (suspendTime > largeBreak*60) {
-      fprintf(stderr, "Round %d, the system has slept for more than largeBreak which is %d minutes.\n", i, largeBreak);
+      fprintf(fid, "   SubWorkTime %d: the system has slept for %d hours %d minutes %d seconds which is more than largeBreak of %d minutes.\n", i+1, suspendTime/3600, suspendTime/60, suspendTime%60, largeBreak);
+      fprintf(fid, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
       smallBreakCounter = 0;
       continue;
     }
 
+    fprintf(fid, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
+
     // If the system has not been suspended for two long, continue as if
     // the system has never been suspended.
-    if (i == numberSubWorkTime) {
-      smallBreakCounter++;
-    }
+    smallBreakCounter++;
 
     if (smallBreakCounter == 3) {
+      largeBreakCounter++;
       smallBreakCounter = 0;
-      fprintf(stderr, "Starting large break and reset smallBreakCounter!\n");
+      fprintf(fid, "\nLarge break number %d: let's take a break for %d minutes!\n", largeBreakCounter, largeBreak);
 
       // Take a large break
       suspendTime = lockscreen(largeBreak*60, 0);
       if (suspendTime > 0) {
-        fprintf(stderr, "During large break, the system has slept for %d seconds.\n", suspendTime);
+        fprintf(fid, "During large break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, suspendTime/60, suspendTime%60);
         smallBreakCounter = 0;
       }
     } else {
-      fprintf(stderr, "Starting small break number %d!\n", smallBreakCounter);
+      fprintf(fid, "\nSmall break number %d(%d): let's take a break for %d seconds!\n", smallBreakCounter, largeBreakCounter, smallBreak);
       // Take a small break
       suspendTime = lockscreen(smallBreak, 0);
-      if (suspendTime > largeBreak*60 - smallBreak) {
-        fprintf(stderr, "During small break, the system has slept longer than largeBreak, %d seconds.\n", suspendTime);
-        smallBreakCounter = 0;
-      } else if (suspendTime > 0) {
-        fprintf(stderr, "During small break, the system has slept for %d seconds.\n", suspendTime);
-        continue;
+      if (suspendTime > 0) {
+        fprintf(fid, "During small break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, suspendTime/60, suspendTime%60);
+        if (suspendTime > largeBreak*60 - smallBreak) {
+          smallBreakCounter = 0;
+        }
       }
     }
+  }
+  if ((fid != NULL) && (fid != stderr)) {
+    fclose(fid);
   }
   return 0;
 }        /* ----------  end of function main  ---------- */

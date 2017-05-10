@@ -14,9 +14,9 @@
 //
 // =====================================================================================
 
-static const unsigned int smallBreak  = 50; // (seconds)
-static const unsigned int largeBreak  = 10; // (minutes)
-static const unsigned int workTime    = 19; // (minutes)
+static unsigned int smallBreak  = 60; // (seconds)
+static unsigned int largeBreak  = 8; // (minutes)
+static unsigned int workTime    = 20; // (minutes)
 
 static const double radius = 120.0;
 static const double ballRadius = 30;
@@ -24,21 +24,21 @@ static const int N = 20; // number of trapezoids for each ball
 
 static const XRenderColor colorList[NUMCOLS][2] = {
   [M_DIM] = {   // color of the ball when its corresponding bit = 0
-    {0x94ff, 0x94ff, 0x94ff, 0xf0ff},   // inner color: white
-    {0x0000, 0xafff, 0x0000, 0xffff}    // outer color: green 
+    {0x94ff, 0x94ff, 0x00ff, 0xf0ff},   // inner color: white
+    {0x0000, 0xa0ff, 0x0000, 0xffff}    // outer color: green 
   },
   [M_BRG] = {
     {0xffff, 0xffff, 0x0fff, 0xffff},   // white
     {0x0000, 0xafff, 0x0000, 0xffff}    // outer color: green 
   },
   [S_DIM] = {
-    {0x94ff, 0x94ff, 0x94ff, 0xf0ff},   // inner color: white
-    {0xffff, 0x2bff, 0x00ff, 0xffff}    // outer color: blue
+    {0x94ff, 0x94ff, 0x00ff, 0xf0ff},   // inner color: white
+    {0xffff, 0x00ff, 0x00ff, 0xffff}    // outer color: blue
     //{0x1bff, 0x85ff, 0xedff, 0xffff}    // outer color: blue
   },
   [S_BRG] = {
     {0xffff, 0xffff, 0x0fff, 0xffff}, 
-    {0xffff, 0x2bff, 0x00ff, 0xffff}    // outer color: blue
+    {0xffff, 0x00ff, 0x00ff, 0xffff}    // outer color: blue
     //{0x1bff, 0x85ff, 0xedff, 0xffff}
   }
 };
