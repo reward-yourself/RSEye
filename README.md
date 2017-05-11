@@ -1,5 +1,5 @@
 # RSEye
-*A simple RSI and eyes defender*
+*A simple [RSI](http://www.nhs.uk/conditions/repetitive-strain-injury/Pages/Introduction.aspx) and eyes defender*
 
 Freeze screen `smallBreak`(seconds) every `workTime`(minutes) and `largeBreak`(minutes) on the third smallBreak. My code is inspired by [workrave](http://www.workrave.org/), [slock](http://tools.suckless.org/slock/), and [i3lock](https://i3wm.org/i3lock/). The reason for this program are that `workrave` does not work on my computer many times and that `slock` and `i3lock` do not have the timer that I want.
 
