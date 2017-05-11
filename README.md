@@ -5,13 +5,8 @@ Freeze screen `smallBreak`(seconds) every `workTime`(minutes) and `largeBreak`(m
 
     Usage:
         rseye -k -w worktime -s smallbreak -l largebreak -o logfile
-        -k    
-            Kill all running instances of rseye or abort. This option cannot be combined with any other options.
-        -w  worktime
-            The time in minutes between consecutive breaks. Default value is 20 minutes.
-        -s  smallbreak
-            The length in seconds of a small break. Default value is 60 seconds.
-        -l  largebreak
-            The length in minutes of a large break. Default value is 8 minutes.
-        -o  logfile
-            Record starting and ending time for working times and breaks. There is no default value.
+        -k              Kill all running instances of rseye or abort. This option cannot be combined with any other options.
+        -w  worktime    The time in minutes between consecutive breaks. Default value is 20 minutes.
+        -s  smallbreak  The length in seconds of a small break. Default value is 60 seconds.
+        -l  largebreak  The length in minutes of a large break. Default value is 8 minutes.
+        -o  logfile     Record starting and ending time for working times and breaks. There is no default value.
