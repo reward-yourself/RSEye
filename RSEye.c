@@ -245,6 +245,11 @@ die(const char *errmsg, ...)
   vfprintf(stderr, errmsg, ap);
   va_end(ap);
   fprintf(stderr, "\tUsage: \n\t\trseye -k -w worktime -s smallbreak -l largebreak -o logfile\n\n");
+  fprintf(stderr, "\t\t-k             \tKill all running instances of rseye or abort. This option cannot be combined with any other options.\n");
+  fprintf(stderr, "\t\t-w  worktime   \tThe time in minutes between consecutive breaks. Default value is 20 minutes.\n");
+  fprintf(stderr, "\t\t-s  smallbreak \tThe length in seconds of a small break. Default value is 60 seconds.\n");
+  fprintf(stderr, "\t\t-l  largebreak \tThe length in minutes of a large break. Default value is 8 minutes.\n");
+  fprintf(stderr, "\t\t-o  logfile    \tRecord starting and ending time for working times and breaks. There is no default value.\n");
   exit(1);
 }
 
