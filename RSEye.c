@@ -162,9 +162,6 @@ lockscreen(unsigned int lengthOfBreak, int screen)
 
   // count down timer
 
-  XRenderColor bg_color = {
-    .red=0xffff, .green=0x37ff, .blue=0x00ff, .alpha=0x7fff
-  };
   XRenderFillRectangle(
       dpy, PictOpOver, picture, &bg_color, 0, 0, win_w, win_h
       );
