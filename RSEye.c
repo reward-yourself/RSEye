@@ -334,21 +334,21 @@ create_pid()
     printf("default\tkill it and continue with the current process\n");
     char c = getchar();
     if (c == 'k') die("\nAborting current process!\n");
-    char kill[18] = "kill ";
-    int i = 0;
-    while (pidstr[i] != '\0') {
-      kill[5+i] = pidstr[i];
-      i++;
-    }
-    kill[5+i] = pidstr[i];
-    fprintf(stderr, "%s\n", kill);
+    pid_t pid = getpid();
+    fprintf(stderr, "rseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", pid, pidstr);
     fid = fopen("/tmp/rseye.log", "a");
     if (fid != NULL) {
       setbuf(fid, NULL);
-      fprintf(fid, "rseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", getpid(), pidstr);
+      fprintf(fid, "\nrseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", pid, pidstr);
     }
-    system(kill);
-    system("rm -f /tmp/rseye.pid");
+    pid = 0;
+    int i = 0;
+    while (pidstr[i] != '\0') {
+      pid = pid*10 + (pidstr[i] - '0');
+      i++;
+    }
+    kill(pid, SIGTERM);
+    unlink("/tmp/rseye.pid");   /* delete pid file */
     if (c == 'a') die("\nAborting current process!\n");
   }
 
@@ -433,7 +433,7 @@ main ( int argc, char *argv[] )
   time_t endTime;
   time_t startTime = time(NULL);
   struct tm tm = *localtime(&startTime);
-  fprintf(fid, "\nProgram starts on %s",  asctime(&tm));
+  fprintf(fid, "\nrseye (pid = %u) starts on %s", getpid(), asctime(&tm));
   fprintf(fid, "  WorkTime   = %d (minutes).\n", workTime);
   fprintf(fid, "  SmallBreak = %d (seconds).\n", smallBreak);
   fprintf(fid, "  LargeBreak = %d (minutes).\n", largeBreak);
