@@ -39,7 +39,7 @@ enum {
   NUMCOLS
 };
 
-#define MAX_CML_ARGS 7
+#define MAX_CML_ARGS 9
 
 static const double angle    = M_PI/5.0;
 
