@@ -30,7 +30,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <time.h>
-#include <assert.h>
+#include <signal.h>
 #include <X11/extensions/Xrender.h>
 
 enum {
@@ -40,6 +40,8 @@ enum {
   S_BRG, 
   NUMCOLS
 };
+
+#define MAX_CML_ARGS 7
 
 static const double angle    = M_PI/5.0;
 
@@ -65,8 +67,23 @@ typedef struct {
 unsigned int 
 lockscreen(unsigned int lengthOfBreak, int screen) 
 {
-  Display *dpy = XOpenDisplay(0);
-  assert(dpy);
+  Display *dpy = XOpenDisplay(NULL);
+  time_t startTime, endTime;
+  unsigned int actualTime;
+  if (dpy == NULL) {
+    fprintf(stderr, "Cannot connect to X server! Sleep for %d seconds now!\n", lengthOfBreak);
+    startTime = time(NULL);
+    struct timespec tp;
+    clock_gettime(CLOCK_REALTIME, &tp);
+    tp.tv_sec += lengthOfBreak;
+    clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &tp, NULL);
+    endTime = time(NULL);
+
+    // If the system happened to sleep during break time, count that
+    // sleeping time as well.
+    actualTime = (unsigned int)difftime(endTime, startTime);
+    return actualTime - lengthOfBreak;
+  }
 
   XRenderPictFormat *fmt=XRenderFindStandardFormat(
       dpy, PictStandardRGB24);
@@ -173,9 +190,6 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   int sec = lengthOfBreak%60;
   int set;
   int tmp;
-  time_t startTime, endTime;
-  startTime = time(NULL);
-  unsigned int actualTime;
   while (min | sec) {
     set = 0;
     tmp = sec;
@@ -244,65 +258,141 @@ die(const char *errmsg, ...)
   va_start(ap, errmsg);
   vfprintf(stderr, errmsg, ap);
   va_end(ap);
-  fprintf(stderr, "\tUsage: \n\t\trseye -k -w worktime -s smallbreak -l largebreak -o logfile\n\n");
-  fprintf(stderr, "\t\t-k             \tKill all running instances of rseye or abort. This option cannot be combined with any other options.\n");
-  fprintf(stderr, "\t\t-w  worktime   \tThe time in minutes between consecutive breaks. Default value is 20 minutes.\n");
-  fprintf(stderr, "\t\t-s  smallbreak \tThe length in seconds of a small break. Default value is 60 seconds.\n");
-  fprintf(stderr, "\t\t-l  largebreak \tThe length in minutes of a large break. Default value is 8 minutes.\n");
-  fprintf(stderr, "\t\t-o  logfile    \tRecord starting and ending time for working times and breaks. There is no default value.\n");
+  fprintf(stderr, "Usage: \n\t\trseye -w worktime -s smallbreak -l largebreak -o logfile\n\n");
+  fprintf(stderr, "\t-w  worktime   \tThe time in minutes between consecutive breaks. Default value is 20 minutes.\n");
+  fprintf(stderr, "\t-s  smallbreak \tThe length in seconds of a small break. Default value is 60 seconds.\n");
+  fprintf(stderr, "\t-l  largebreak \tThe length in minutes of a large break. Default value is 8 minutes.\n");
+  fprintf(stderr, "\t-o  logfile    \tRecord starting and ending time for working times and breaks. Default value is /tmp/rseye.log.\n");
   exit(1);
+}
+
+void signal_handler(int sig) {
+  signal(sig, SIG_IGN);
+  FILE * fid = NULL;
+  char pidstr[10] = "SIG";
+  switch (sig) {
+    case SIGINT:
+      pidstr[3] = 'I';
+      pidstr[4] = 'N';
+      pidstr[5] = 'T';
+      pidstr[6] = '\0';
+      break;
+    case SIGTERM:
+      pidstr[3] = 'T';
+      pidstr[4] = 'E';
+      pidstr[5] = 'R';
+      pidstr[6] = 'M';
+      pidstr[7] = '\0';
+      break;
+    case SIGQUIT:
+      pidstr[3] = 'Q';
+      pidstr[4] = 'U';
+      pidstr[5] = 'I';
+      pidstr[6] = 'T';
+      pidstr[7] = '\0';
+      break;
+  }
+  switch (sig) {
+    case SIGINT:
+    case SIGTERM:
+    case SIGQUIT:
+      fid = fopen("/tmp/rseye.log", "a");
+      if (fid == NULL) fid = stderr;
+      fprintf(fid, "\nAborting rseye (pid = %u) due to %s signal!\n", getpid(), pidstr);
+      if ((fid != NULL) && (fid != stderr)) fclose(fid);
+      fid = NULL;
+      fid = fopen("/tmp/rseye.pid", "r");
+      if (fid != NULL) {
+        fgets(pidstr, 10, fid);
+        fclose(fid);
+        if (getpid() == atoi(pidstr)) system("rm -f /tmp/rseye.pid");
+      }
+      signal(sig, signal_handler);
+      exit(0);
+      break;
+  }
+  signal(sig, signal_handler);
 }
 
 int
 main ( int argc, char *argv[] )
 {
+  signal(SIGINT, signal_handler);
+
   FILE *fid = NULL;
 
   // Check if kill all
-  if (argc == 2) {
-    argv++;
-    if (argv[0][1] == '\0') die("\n\tError: Invalid arguments!\n");
-    if ((argv[0][0] != '-') || (argv[0][1] != 'k') || (argv[0][2] != '\0'))   // if not '-k' abort
-      die("\n\tError: Invalid arguments!\n");
-  }
+  if (argc == 2) die("\nError: Invalid arguments!\n");
 
   // Check if it is already running.
-  fid = popen("ps ax | awk '$5 ~ /[r]seye/'", "r");
+  char pidstr[10];
+  fid = fopen("/tmp/rseye.pid", "r");
   if (fid != NULL) {
-    FILE *out = stderr;
-    char str[100];
-    int count = 0;
-    if (argc == 2) out = stdout;
-    fprintf(out, "The following instances of rseye are running:\n");
-    while (fgets(str, 100, fid)) {
-      fprintf(out, "%s", str);
-      count++;
+    fgets(pidstr, 10, fid);
+    printf("\nAnother instance of rseye (pid = %s) has already been running!\n", pidstr);
+    printf("Choose the following options:\n");
+    printf("k      \tkill the current process only\n");
+    printf("a      \tkill it and the current process\n");
+    printf("default\tkill it and continue with the current process\n");
+    char c = getchar();
+    if (c == 'k') die("\nAborting current process!\n");
+    char kill[18] = "kill ";
+    int i = 0;
+    while (pidstr[i] != '\0') {
+      kill[5+i] = pidstr[i];
+      i++;
     }
-    pclose(fid);
+    kill[5+i] = pidstr[i];
+    fprintf(stderr, "%s\n", kill);
+    system(kill);
+    fclose(fid);
     fid = NULL;
-    if (argc == 2) {
-      printf("Do you want to kill all instances?[y]n: ");
-      char c = getchar();
-      if ((c == 'n') || (count == 1)) die("\n\tAborting current process!\n");
-      system("ps ax | awk '$5 ~ /[r]seye/ { system(\"kill -9 \"$1) }'");
-    }
-    if (count > 1) {
-      die("\n\tError: Another instance of rseye is already running! Abort now!\n");
-    }
+    system("rm -f /tmp/rseye.pid");
+    if (c == 'a') die("\nAborting current process!\n");
   }
+  fid = fopen("/tmp/rseye.pid", "w");
+  if (fid == NULL) die("Cannot create file /tmp/rseye.pid! Abort now!\n");
+  sprintf(pidstr, "%u", getpid());
+  fputs(pidstr, fid);
+  fclose(fid);
+  fid = NULL;
+
+  /*fid = popen("ps ax | awk 'NR==1 || $5 ~ /[r]seye/'", "r");*/
+  /*if (fid != NULL) {*/
+    /*FILE *out = stderr;*/
+    /*char str[100];*/
+    /*int count = 0;*/
+    /*if (argc == 2) out = stdout;*/
+    /*fprintf(out, "The following instances of rseye are running:\n");*/
+    /*while (fgets(str, 100, fid)) {*/
+      /*fprintf(out, "%s", str);*/
+      /*count++;*/
+    /*}*/
+    /*pclose(fid);*/
+    /*fid = NULL;*/
+    /*if (argc == 2) {*/
+      /*printf("Do you want to kill all instances?[y]n: ");*/
+      /*char c = getchar();*/
+      /*if ((c == 'n') || (count == 1)) die("\nAborting current process!\n");*/
+      /*system("ps ax | awk '$5 ~ /[r]seye/ { system(\"kill -9 \"$1) }'");*/
+    /*}*/
+    /*if (count > 1) {*/
+      /*die("\nError: Another instance of rseye is already running! Abort now!\n");*/
+    /*}*/
+  /*}*/
 
   // check arguments
-  if (~argc & 1) die("\n\tError: Invalid number of arguments!\n");
-  if (argc > 9) {
-    die("\n\tError: Too many arguments!\n");
+  if (~argc & 1) die("\nError: Invalid number of arguments!\n");
+  if (argc > MAX_CML_ARGS) {
+    die("\nError: Too many arguments!\n");
   }
   while (argc > 2) {
     argc--; argv++;
-    if (argv[0][0] != '-') die("\n\tError: Something is wrong with the arguments!\n");
-    if (argv[0][1] == '\0') die("\n\tError: Something is wrong with the arguments!\n");
+    if (argv[0][0] != '-') die("\nError: Something is wrong with the arguments!\n");
+    if (argv[0][1] == '\0') die("\nError: Something is wrong with the arguments!\n");
     if (argv[0][2] != '\0') {
-      if ((fid != NULL) && (fid != stderr)) fclose(fid);
-      die("\n\tError: Invalid arguments!\n");
+      if (fid != NULL) fclose(fid);
+      die("\nError: Invalid arguments!\n");
     }
 
     char argv_ = argv[0][1];
@@ -310,8 +400,8 @@ main ( int argc, char *argv[] )
 
     int val = atoi(argv[0]);
     if ((val <= 0) && argv_ != 'o') {
-      if ((fid != NULL) && (fid != stderr)) fclose(fid);
-      die("\n\tError: Time values must be positive integers!\n");
+      if (fid != NULL) fclose(fid);
+      die("\nError: Time values must be positive integers!\n");
     }
 
     switch (argv_) {
@@ -326,16 +416,20 @@ main ( int argc, char *argv[] )
         break;
       case 'o':
         fid = fopen(argv[0], "a");
-        if (fid == NULL) die("\n\tError: Cannot open file %s!\n", argv[0]);
+        if (fid == NULL) die("\nError: Cannot open logfile %s!\n", argv[0]);
+        fprintf(stderr, "Log file is %s\n", argv[0]);
         setbuf(fid, NULL);
         break;
       default:
-        if ((fid != NULL) && (fid != stderr)) fclose(fid);
-        die("\n\tError: Invalid arguments!\n");
+        if (fid != NULL) fclose(fid);
+        die("\nError: Invalid arguments!\n");
     }
   }
   if (fid == NULL) {
-    fid = stderr;
+    fid = fopen("/tmp/rseye.log", "a");
+    if (fid == NULL) die("\nError: Cannot open logfile /tmp/rseye.log!\n");
+    setbuf(fid, NULL);
+    fprintf(stderr, "Log file is /tmp/rseye.log\n");
   }
   time_t endTime;
   time_t startTime = time(NULL);
@@ -427,8 +521,6 @@ main ( int argc, char *argv[] )
       }
     }
   }
-  if ((fid != NULL) && (fid != stderr)) {
-    fclose(fid);
-  }
+  if (fid != NULL) fclose(fid);
   return 0;
 }        /* ----------  end of function main  ---------- */
