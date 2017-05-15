@@ -2,10 +2,8 @@
  * =====================================================================================
  *
  *       Filename:  RSEye.c
- *        Version:  1.0
+ *        Version:  0.1
  *        Created:  05/02/2017 08:58:04 AM
- *       Revision:  none
- *       Compiler:  g++
  *         Author:  Hoang-Ngan Nguyen (), zhoangngan@gmail.com
  *    Description:  
  *    - To make it simple, the program will work as follows:
@@ -190,6 +188,7 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   int sec = lengthOfBreak%60;
   int set;
   int tmp;
+  startTime = time(NULL);
   while (min | sec) {
     set = 0;
     tmp = sec;
@@ -266,7 +265,9 @@ die(const char *errmsg, ...)
   exit(1);
 }
 
-void signal_handler(int sig) {
+void 
+signal_handler(int sig) 
+{
   signal(sig, SIG_IGN);
   FILE * fid = NULL;
   char pidstr[10] = "SIG";
@@ -314,21 +315,18 @@ void signal_handler(int sig) {
   signal(sig, signal_handler);
 }
 
-int
-main ( int argc, char *argv[] )
+void
+create_pid() 
 {
-  signal(SIGINT, signal_handler);
-
-  FILE *fid = NULL;
-
-  // Check if kill all
-  if (argc == 2) die("\nError: Invalid arguments!\n");
+  FILE * fid = NULL;
 
   // Check if it is already running.
   char pidstr[10];
   fid = fopen("/tmp/rseye.pid", "r");
   if (fid != NULL) {
     fgets(pidstr, 10, fid);
+    fclose(fid);
+    fid = NULL;
     printf("\nAnother instance of rseye (pid = %s) has already been running!\n", pidstr);
     printf("Choose the following options:\n");
     printf("k      \tkill the current process only\n");
@@ -344,44 +342,29 @@ main ( int argc, char *argv[] )
     }
     kill[5+i] = pidstr[i];
     fprintf(stderr, "%s\n", kill);
+    fid = fopen("/tmp/rseye.log", "a");
+    if (fid != NULL) {
+      setbuf(fid, NULL);
+      fprintf(fid, "rseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", getpid(), pidstr);
+    }
     system(kill);
-    fclose(fid);
-    fid = NULL;
     system("rm -f /tmp/rseye.pid");
     if (c == 'a') die("\nAborting current process!\n");
   }
+
+  // write pid to pid file
   fid = fopen("/tmp/rseye.pid", "w");
   if (fid == NULL) die("Cannot create file /tmp/rseye.pid! Abort now!\n");
   sprintf(pidstr, "%u", getpid());
   fputs(pidstr, fid);
   fclose(fid);
-  fid = NULL;
+}
 
-  /*fid = popen("ps ax | awk 'NR==1 || $5 ~ /[r]seye/'", "r");*/
-  /*if (fid != NULL) {*/
-    /*FILE *out = stderr;*/
-    /*char str[100];*/
-    /*int count = 0;*/
-    /*if (argc == 2) out = stdout;*/
-    /*fprintf(out, "The following instances of rseye are running:\n");*/
-    /*while (fgets(str, 100, fid)) {*/
-      /*fprintf(out, "%s", str);*/
-      /*count++;*/
-    /*}*/
-    /*pclose(fid);*/
-    /*fid = NULL;*/
-    /*if (argc == 2) {*/
-      /*printf("Do you want to kill all instances?[y]n: ");*/
-      /*char c = getchar();*/
-      /*if ((c == 'n') || (count == 1)) die("\nAborting current process!\n");*/
-      /*system("ps ax | awk '$5 ~ /[r]seye/ { system(\"kill -9 \"$1) }'");*/
-    /*}*/
-    /*if (count > 1) {*/
-      /*die("\nError: Another instance of rseye is already running! Abort now!\n");*/
-    /*}*/
-  /*}*/
+FILE *
+check_arguments(int argc, char **argv) 
+{
+  FILE * fid = NULL;
 
-  // check arguments
   if (~argc & 1) die("\nError: Invalid number of arguments!\n");
   if (argc > MAX_CML_ARGS) {
     die("\nError: Too many arguments!\n");
@@ -431,6 +414,22 @@ main ( int argc, char *argv[] )
     setbuf(fid, NULL);
     fprintf(stderr, "Log file is /tmp/rseye.log\n");
   }
+  return fid;
+}
+
+int
+main ( int argc, char *argv[] )
+{
+  signal(SIGINT , signal_handler);
+  signal(SIGTERM, signal_handler);
+  signal(SIGQUIT, signal_handler);
+
+  // check arguments and get logfile handler
+  FILE *fid = check_arguments(argc, argv);
+
+  // check if another instance has already been running and create pid file
+  create_pid();
+
   time_t endTime;
   time_t startTime = time(NULL);
   struct tm tm = *localtime(&startTime);
