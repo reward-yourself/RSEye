@@ -14,10 +14,7 @@
 //
 // =====================================================================================
 
-static unsigned int smallBreak  = 60; // (seconds)
-static unsigned int largeBreak  = 8; // (minutes)
-static unsigned int workTime    = 20; // (minutes)
-
+// clock configuration
 static const double radius = 120.0;
 static const double ballRadius = 30;
 static const int N = 20; // number of trapezoids for each ball

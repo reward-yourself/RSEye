@@ -5,7 +5,7 @@
  *        Version:  0.1
  *        Created:  05/02/2017 08:58:04 AM
  *         Author:  Hoang-Ngan Nguyen (), zhoangngan@gmail.com
- *    Description:  
+ *    Description:
  *    - To make it simple, the program will work as follows:
  *      + After x minutes turn the locker on, activate small break.
  *      + Small break time is `y` seconds.
@@ -31,16 +31,23 @@
 #include <signal.h>
 #include <X11/extensions/Xrender.h>
 
+#define MAX_CML_ARGS 9
+
 enum {
-  M_DIM, 
-  M_BRG, 
-  S_DIM, 
-  S_BRG, 
+  M_DIM,
+  M_BRG,
+  S_DIM,
+  S_BRG,
   NUMCOLS
 };
 
-#define MAX_CML_ARGS 9
+typedef int mytime_t;
 
+unsigned int postponeNumSmall = 0;
+unsigned int postponeNumLarge = 0;
+static mytime_t smallBreak  = 60; // (seconds)
+static mytime_t largeBreak  = 8; // (minutes)
+static mytime_t workTime    = 20; // (minutes)
 static const double angle    = M_PI/5.0;
 
 #include "config.h"
@@ -62,12 +69,12 @@ typedef struct {
   int px, py, radius;
 } Ball;
 
-unsigned int 
-lockscreen(unsigned int lengthOfBreak, int screen) 
+mytime_t
+lockscreen(mytime_t lengthOfBreak, int screen)
 {
   Display *dpy = XOpenDisplay(NULL);
   time_t startTime, endTime;
-  unsigned int actualTime;
+  mytime_t actualTime;
   if (dpy == NULL) {
     fprintf(stderr, "Cannot connect to X server! Sleep for %d seconds now!\n", lengthOfBreak);
     startTime = time(NULL);
@@ -79,7 +86,7 @@ lockscreen(unsigned int lengthOfBreak, int screen)
 
     // If the system happened to sleep during break time, count that
     // sleeping time as well.
-    actualTime = (unsigned int)difftime(endTime, startTime);
+    actualTime = (mytime_t)difftime(endTime, startTime);
     return actualTime - lengthOfBreak;
   }
 
@@ -90,14 +97,14 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   win_h = DisplayHeight(dpy, screen);
   win_w = DisplayWidth(dpy, screen);
 
-  unsigned int i, ptgrab, kbgrab;
+  mytime_t i, ptgrab, kbgrab;
 
   // Draw a window covering the whole screen
   XSetWindowAttributes wa;
   wa.override_redirect = 1;
   Window root = RootWindow(dpy, screen);
   Window w  = XCreateWindow(
-      dpy, root, 0, 0, win_w, win_h, 0, 
+      dpy, root, 0, 0, win_w, win_h, 0,
       DefaultDepth(dpy, screen), CopyFromParent,
       DefaultVisual(dpy, screen),
       CWOverrideRedirect, &wa
@@ -166,17 +173,7 @@ lockscreen(unsigned int lengthOfBreak, int screen)
     usleep(25000);
   }
 
-  // Wait for the MapNotify event.
-  // Mine does not receive any MapNotify event even with
-  // StructureNotifyMask.
-  /*for(;;) {*/
-    /*XEvent ev;*/
-    /*XNextEvent(dpy, &ev);*/
-    /*if (ev.type == MapNotify) break; */
-  /*}*/
-
   // count down timer
-
   XRenderFillRectangle(
       dpy, PictOpOver, picture, &bg_color, 0, 0, win_w, win_h
       );
@@ -189,6 +186,7 @@ lockscreen(unsigned int lengthOfBreak, int screen)
   int set;
   int tmp;
   startTime = time(NULL);
+  XEvent ev;
   while (min | sec) {
     set = 0;
     tmp = sec;
@@ -236,11 +234,21 @@ lockscreen(unsigned int lengthOfBreak, int screen)
 
     // If the system happened to sleep during break time, count that
     // sleeping time as well.
-    actualTime = (unsigned int)difftime(endTime, startTime);
-    if (actualTime > lengthOfBreak) {
+    actualTime = (mytime_t)difftime(endTime, startTime);
+    if (actualTime >= lengthOfBreak) {
       XRenderFreePicture(dpy, picture);
       XCloseDisplay(dpy);
       return actualTime - lengthOfBreak;
+    }
+    if (XCheckWindowEvent(dpy, root, KeyPressMask, &ev)) {
+      KeySym key = XLookupKeysym(&ev.xkey, 0);
+      if ((key == XK_q) || (key == XK_Escape)) {
+        endTime = time(NULL);
+        actualTime = (mytime_t)difftime(endTime, startTime);
+        XRenderFreePicture(dpy, picture);
+        XCloseDisplay(dpy);
+        return actualTime - lengthOfBreak;
+      }
     }
   }
 
@@ -250,8 +258,8 @@ lockscreen(unsigned int lengthOfBreak, int screen)
 }
 
 /* The following function is 99.99% from slock.c on suckless.org */
-static void 
-die(const char *errmsg, ...) 
+static void
+die(const char *errmsg, ...)
 {
   va_list ap;
   va_start(ap, errmsg);
@@ -265,8 +273,8 @@ die(const char *errmsg, ...)
   exit(1);
 }
 
-void 
-signal_handler(int sig) 
+void
+signal_handler(int sig)
 {
   signal(sig, SIG_IGN);
   FILE * fid = NULL;
@@ -316,7 +324,7 @@ signal_handler(int sig)
 }
 
 void
-create_pid() 
+create_pid()
 {
   FILE * fid = NULL;
 
@@ -361,7 +369,7 @@ create_pid()
 }
 
 FILE *
-check_arguments(int argc, char **argv) 
+check_arguments(int argc, char **argv)
 {
   FILE * fid = NULL;
 
@@ -439,18 +447,18 @@ main ( int argc, char *argv[] )
   fprintf(fid, "  LargeBreak = %d (minutes).\n", largeBreak);
   fprintf(fid, "\n**** Start Logging! ****\n");
 
-  unsigned int smallBreakCounter = 0;
-  unsigned int largeBreakCounter = 0;
-  const unsigned int numberSubWorkTime = 4;
-  const unsigned int subWorkTime = workTime*(60 / numberSubWorkTime);
-  unsigned int i = 0;
-  unsigned int suspendTime = 0;
+  mytime_t smallBreakCounter = 0;
+  mytime_t largeBreakCounter = 0;
+  const mytime_t numberSubWorkTime = 4;
+  const mytime_t subWorkTime = workTime*(60 / numberSubWorkTime);
+  mytime_t i = 0;
+  mytime_t suspendTime = 0;
 
   // Predefined sleep function does account for system sleep which is
   // undesired. So, we need to use CLOCK_REALTIME.
   struct timespec tp;
 
-  unsigned int workTimeNumber = 0;
+  mytime_t workTimeNumber = 0;
   while (True) {
     workTimeNumber++;
     suspendTime = 0;
@@ -472,7 +480,7 @@ main ( int argc, char *argv[] )
       endTime = time(NULL);
       tm = *localtime(&endTime);
       fprintf(fid, "   SubWorkTime %d finished on %s", i+1, asctime(&tm));
-      suspendTime = (unsigned int)difftime(endTime, startTime) - subWorkTime;
+      suspendTime = (mytime_t)difftime(endTime, startTime) - subWorkTime;
 
       // If the system has been suspended for more than
       // smallBreak seconds, end the current work time.
@@ -505,17 +513,27 @@ main ( int argc, char *argv[] )
       // Take a large break
       suspendTime = lockscreen(largeBreak*60, 0);
       if (suspendTime > 0) {
-        fprintf(fid, "During large break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, suspendTime/60, suspendTime%60);
+        fprintf(fid, "During large break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, (suspendTime/60)%60, suspendTime%60);
         smallBreakCounter = 0;
+      } else {
+        if (suspendTime < 0) {
+          postponeNumLarge++;
+          fprintf(fid, "You forcefully end a large break the %u-th times. Remaining time is %d minutes %d seconds.\n", postponeNumLarge, -suspendTime/60, -suspendTime%60);
+        }
       }
     } else {
       fprintf(fid, "\nSmall break number %d(%d): let's take a break for %d seconds!\n", smallBreakCounter, largeBreakCounter, smallBreak);
       // Take a small break
       suspendTime = lockscreen(smallBreak, 0);
       if (suspendTime > 0) {
-        fprintf(fid, "During small break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, suspendTime/60, suspendTime%60);
+        fprintf(fid, "During small break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, (suspendTime/60)%60, suspendTime%60);
         if (suspendTime > largeBreak*60 - smallBreak) {
           smallBreakCounter = 0;
+        }
+      } else {
+        if (suspendTime < 0) {
+          postponeNumSmall++;
+          fprintf(fid, "You forcefully end a small break the %u-th times. Remaining time is %d seconds.\n", postponeNumSmall, -suspendTime);
         }
       }
     }
