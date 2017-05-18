@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <X11/extensions/Xrender.h>
 
 #define MAX_CML_ARGS 9
@@ -340,7 +341,13 @@ create_pid()
     printf("k      \tkill the current process only\n");
     printf("a      \tkill it and the current process\n");
     printf("default\tkill it and continue with the current process\n");
-    char c = getchar();
+
+    // non-blocking input
+    char c = 'y';
+    fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
+    sleep(4);
+    read(0, &c, sizeof(char));
+
     if (c == 'k') die("\nAborting current process!\n");
     pid_t pid = getpid();
     fprintf(stderr, "rseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", pid, pidstr);
