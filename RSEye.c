@@ -324,6 +324,15 @@ signal_handler(int sig)
   signal(sig, signal_handler);
 }
 
+int kbhit() {
+  fd_set fds;
+  struct timeval tv = {0, 0};
+  FD_ZERO(&fds);
+  FD_SET(0, &fds);
+  select(1, &fds, NULL, NULL, &tv);
+  return FD_ISSET(0, &fds);
+}
+
 void
 create_pid()
 {
@@ -344,9 +353,11 @@ create_pid()
 
     // non-blocking input
     char c = 'y';
-    fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);
+    /* This will suspend the program if put into background from a terminal */
+    /*fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK);*/ 
     sleep(4);
-    read(0, &c, sizeof(char));
+    /* This will not. */
+    if (kbhit()) read(0, &c, sizeof(char));
 
     if (c == 'k') die("\nAborting current process!\n");
     pid_t pid = getpid();
