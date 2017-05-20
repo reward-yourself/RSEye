@@ -1,7 +1,6 @@
 # RSEye
 *A simple [RSI](http://www.nhs.uk/conditions/repetitive-strain-injury/Pages/Introduction.aspx) and eyes defender*
-
-[NAME](#NAME)  
+ 
 [SYNOPSIS](#SYNOPSIS)  
 [DESCRIPTION](#DESCRIPTION)  
 [FILES](#FILES)  
@@ -11,10 +10,6 @@
 [AUTHOR](#AUTHOR)  
 
 * * *
-
-## NAME<a name="NAME"></a>
-
-**rseye** − help prevent RSI and protect your eyes
 
 ## SYNOPSIS<a name="SYNOPSIS"></a>
 
