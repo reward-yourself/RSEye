@@ -1,0 +1,12 @@
+# ~ will be interpreted as $HOME
+# The structure of this file is as follows:
+# First character of each line is one of the command line options.
+# Second character must be space.
+# Value starts from the third character. Maximum number of digits for
+# numerical values are 3, anything after that will be ignored.
+
+o stderr
+w 20
+s 60
+l 8
+m 60

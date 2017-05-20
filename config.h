@@ -14,6 +14,8 @@
 //
 // =====================================================================================
 
+static const mytime_t minBreak    = 20; // (seconds)
+
 // clock configuration
 static const double radius = 120.0;
 static const double ballRadius = 30;

@@ -21,37 +21,31 @@
  * =====================================================================================
  */
 
-#include <X11/Xlib.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <math.h>
-#include <unistd.h>
-#include <time.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <X11/extensions/Xrender.h>
-
-#define MAX_CML_ARGS 9
-
-enum {
-  M_DIM,
-  M_BRG,
-  S_DIM,
-  S_BRG,
-  NUMCOLS
-};
-
-typedef int mytime_t;
-
-unsigned int postponeNumSmall = 0;
-unsigned int postponeNumLarge = 0;
-static mytime_t smallBreak  = 60; // (seconds)
-static mytime_t largeBreak  = 8; // (minutes)
-static mytime_t workTime    = 20; // (minutes)
-static const double angle    = M_PI/5.0;
-
+#include "global.h"
 #include "config.h"
+
+/* forward declarations */
+int kbhit();
+void make_ball(int cx, int cy, int radius, int N, XPointFixed tris[]);
+mytime_t lockscreen(mytime_t lengthOfBreak, int screen);
+static void die(const char *errmsg, ...);
+void signal_handler(int sig);
+void reate_pid();
+void change_logfile(const char * path);
+void load_config();
+void check_arguments(int argc, char **argv);
+int str_equal(const char * str1, const char * str2);
+
+// non-blocking check if keyboard is hit
+int kbhit() 
+{
+  fd_set fds;
+  struct timeval tv = {0, 0};
+  FD_ZERO(&fds);
+  FD_SET(0, &fds);
+  select(1, &fds, NULL, NULL, &tv);
+  return FD_ISSET(0, &fds);
+}
 
 void make_ball(int cx, int cy, int radius, int N, XPointFixed tris[])
 {
@@ -65,10 +59,6 @@ void make_ball(int cx, int cy, int radius, int N, XPointFixed tris[])
   tris[N+1].x = tris[1].x;
   tris[N+1].y = tris[1].y;
 }
-
-typedef struct {
-  int px, py, radius;
-} Ball;
 
 mytime_t
 lockscreen(mytime_t lengthOfBreak, int screen)
@@ -243,13 +233,15 @@ lockscreen(mytime_t lengthOfBreak, int screen)
     }
     if (XCheckWindowEvent(dpy, root, KeyPressMask, &ev)) {
       KeySym key = XLookupKeysym(&ev.xkey, 0);
-      if ((key == XK_q) || (key == XK_Escape)) {
-        endTime = time(NULL);
-        actualTime = (mytime_t)difftime(endTime, startTime);
-        XRenderFreePicture(dpy, picture);
-        XCloseDisplay(dpy);
-        return actualTime - lengthOfBreak;
-      }
+      if (actualTime > minBreak)
+        if ((key == XK_q) || (key == XK_Escape)) {
+          endTime = time(NULL);
+          actualTime = (mytime_t)difftime(endTime, startTime);
+          XRenderFreePicture(dpy, picture);
+          XCloseDisplay(dpy);
+          return actualTime - lengthOfBreak;
+        }
+      if (key == XK_r) reloadRequested = 1;
     }
   }
 
@@ -306,31 +298,20 @@ signal_handler(int sig)
     case SIGINT:
     case SIGTERM:
     case SIGQUIT:
-      fid = fopen("/tmp/rseye.log", "a");
-      if (fid == NULL) fid = stderr;
-      fprintf(fid, "\nAborting rseye (pid = %u) due to %s signal!\n", getpid(), pidstr);
-      if ((fid != NULL) && (fid != stderr)) fclose(fid);
+      fprintf(logFile, "\nAborting rseye (pid = %u) due to %s signal!\n", getpid(), pidstr);
+      if ((logFile != NULL) && (logFile != stderr)) fclose(logFile);
       fid = NULL;
       fid = fopen("/tmp/rseye.pid", "r");
       if (fid != NULL) {
         fgets(pidstr, 10, fid);
         fclose(fid);
-        if (getpid() == atoi(pidstr)) system("rm -f /tmp/rseye.pid");
+        if (getpid() == atoi(pidstr)) unlink("/tmp/rseye.pid");
       }
       signal(sig, signal_handler);
       exit(0);
       break;
   }
   signal(sig, signal_handler);
-}
-
-int kbhit() {
-  fd_set fds;
-  struct timeval tv = {0, 0};
-  FD_ZERO(&fds);
-  FD_SET(0, &fds);
-  select(1, &fds, NULL, NULL, &tv);
-  return FD_ISSET(0, &fds);
 }
 
 void
@@ -346,7 +327,7 @@ create_pid()
     fclose(fid);
     fid = NULL;
     printf("\nAnother instance of rseye (pid = %s) has already been running!\n", pidstr);
-    printf("Choose the following options:\n");
+    printf("Choose the following options (timeout is 4 seconds):\n");
     printf("k      \tkill the current process only\n");
     printf("a      \tkill it and the current process\n");
     printf("default\tkill it and continue with the current process\n");
@@ -361,12 +342,7 @@ create_pid()
 
     if (c == 'k') die("\nAborting current process!\n");
     pid_t pid = getpid();
-    fprintf(stderr, "rseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", pid, pidstr);
-    fid = fopen("/tmp/rseye.log", "a");
-    if (fid != NULL) {
-      setbuf(fid, NULL);
-      fprintf(fid, "\nrseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", pid, pidstr);
-    }
+    fprintf(logFile, "\nrseye (pid = %u): Sending SIGTERM to rseye (pid = %s)\n", pid, pidstr);
     pid = 0;
     int i = 0;
     while (pidstr[i] != '\0') {
@@ -380,13 +356,38 @@ create_pid()
 
   // write pid to pid file
   fid = fopen("/tmp/rseye.pid", "w");
-  if (fid == NULL) die("Cannot create file /tmp/rseye.pid! Abort now!\n");
+  if (fid == NULL) die("Cannot create pid file /tmp/rseye.pid! Abort now!\n");
   sprintf(pidstr, "%u", getpid());
   fputs(pidstr, fid);
   fclose(fid);
 }
 
-FILE *
+void
+change_logfile(const char * path)
+{
+  FILE * flog = NULL;
+  if (str_equal(path, "stderr")) flog = stderr;
+  else fopen(path, "a");
+  if (flog == NULL) {
+    fprintf(stderr, "Error: Cannot open log file %s!\nFall back to %s!\n", path, logFileName);
+    return;
+  }
+  if (logFile != stderr) setbuf(flog, NULL);
+  time_t startTime = time(NULL);
+  struct tm tm = *localtime(&startTime);
+  fprintf(logFile, "%slog file is changed to: \n%s\n", asctime(&tm), path);
+  if (logFile != stderr) fclose(logFile);
+  logFile = flog;
+  fprintf(logFile, "%slog file is changed from: \n%s\n", asctime(&tm), logFileName);
+  int i = 0;
+  while (path[i] != '\0') {
+    logFileName[i] = path[i];
+    i++;
+  }
+  logFileName[i] = '\0';
+}
+
+void
 check_arguments(int argc, char **argv)
 {
   FILE * fid = NULL;
@@ -416,42 +417,179 @@ check_arguments(int argc, char **argv)
     switch (argv_) {
       case 'w':
         workTime = val;
+        if (workTime > 30) workTime = 30;
+        workTime = ((workTime + 4)/5)*5;
         break;
       case 's':
         smallBreak = val;
+        if (smallBreak > 120) smallBreak = 120;
+        if (smallBreak < minBreak) smallBreak = minBreak;
         break;
       case 'l':
         largeBreak = val;
+        if (largeBreak < 5) largeBreak = 5;
+        break;
+      case 'm':
+        maxWorkTime = val;
+        if (maxWorkTime > 180) maxWorkTime = 180;
+        if (maxWorkTime <  60) maxWorkTime =  60;
+        if (maxWorkTime < workTime) maxWorkTime = workTime;
         break;
       case 'o':
-        fid = fopen(argv[0], "a");
-        if (fid == NULL) die("\nError: Cannot open logfile %s!\n", argv[0]);
-        fprintf(stderr, "Log file is %s\n", argv[0]);
-        setbuf(fid, NULL);
+        if(!str_equal(argv[0], logFileName)) change_logfile(argv[0]);
         break;
       default:
         if (fid != NULL) fclose(fid);
         die("\nError: Invalid arguments!\n");
     }
   }
-  if (fid == NULL) {
-    fid = fopen("/tmp/rseye.log", "a");
-    if (fid == NULL) die("\nError: Cannot open logfile /tmp/rseye.log!\n");
-    setbuf(fid, NULL);
-    fprintf(stderr, "Log file is /tmp/rseye.log\n");
+}
+
+void
+load_config() 
+{
+  static unsigned int reloaded = 0;
+
+  char str[F_NAME_MAX] = "/.rseyerc";
+  char * home = getenv("HOME"); /* cannot free home because it points to environment variable */
+  int i = 0, len = 0, strlen = 0;
+  while (home[len] != '\0') len++;
+  if (len + 10 > F_NAME_MAX) {
+    fprintf(stderr, "Error: Cannot load config -- $HOME/.rseyerc path is too long (len($HOME/.rseyerc) = %d).\n", len + 10);
+    fprintf(stderr, "Please increase F_NAME_MAX in global.h and recompile!\n");
+    return;
   }
-  return fid;
+  for (i = 0; i < 10; ++i) {
+    str[i + len] = str[i];
+  }
+  for (i = 0; i < len; ++i) {
+    str[i] = home[i];
+  }
+
+  char * path = str;
+  FILE * fid = fopen(path, "r");
+  if (fid == NULL) {
+    perror("Cannot load config file");
+    return;
+  }
+  mytime_t tmp;
+  char c;
+  printf("Home is %s\n", home);
+  while (fgets(str, F_NAME_MAX, fid) != NULL) {
+    if (str[0] == 'o') { // ^o filename
+      strlen = 0;
+      while (str[strlen] != '\0') strlen++;
+      if (str[strlen - 1] == '\n') str[--strlen] = '\0';
+      strlen -= 2;
+      path = str + 2;
+      printf("path is %s\n", path);
+      if (str[2] == '~') {
+        strlen--;
+        if (len + strlen + 1 > F_NAME_MAX) {
+          fprintf(stderr, "Error: Path is too long (len(Path) = %d).\n Please increase F_NAME_MAX and recompile!\n", len + strlen);
+          fprintf(stderr, "Path: %s/%s\n", home, str);
+          return;
+        }
+        // now append $HOME to the beginning of str
+        for (int j = 0; j < strlen+1; ++j) {
+          str[len + strlen - j] = str[strlen + 3 - j];
+        }
+        for (int j = 0; j < len; ++j) {
+          str[j] = home[j];
+        }
+        path = str;
+      }
+
+      if (!str_equal(path, logFileName)) change_logfile(path);
+
+      if (reloaded) {
+        fprintf(logFile, "\nrseye (pid = %u): reloaded values are as follows.", getpid());
+        fprintf(logFile, "  WorkTime    = %d (minutes).\n", workTime);
+        fprintf(logFile, "  SmallBreak  = %d (seconds).\n", smallBreak);
+        fprintf(logFile, "  LargeBreak  = %d (minutes).\n", largeBreak);
+        fprintf(logFile, "  maxWorkTime = %d (minutes).\n", maxWorkTime);
+        fprintf(logFile, "\n**** Start Logging in a new log file! ****\n");
+      }
+
+      continue;
+    }
+    strlen = 0;
+    while (str[strlen] != '\0') strlen++;
+    if (str[strlen - 1] == '\n') str[--strlen] = '\0';
+    while (strlen < 5) {
+      str[strlen] = '\0';
+      strlen++;
+    }
+    tmp = 0;
+    c = str[2];
+    if ((c >= '0') && (c <= '9')) tmp = tmp*10 + (c - '0');
+    c = str[3];
+    if ((c >= '0') && (c <= '9')) tmp = tmp*10 + (c - '0');
+    c = str[4];
+    if ((c >= '0') && (c <= '9')) tmp = tmp*10 + (c - '0');
+    if (tmp == 0) continue;
+    switch (str[0]) {
+      case 'w':
+        workTime = tmp;
+        if (workTime > 30) workTime = 30;
+        workTime = ((workTime + 4)/5)*5;
+        break;
+      case 's':
+        smallBreak = tmp;
+        if (smallBreak > 120) smallBreak = 120;
+        if (smallBreak < minBreak) smallBreak = minBreak;
+        break;
+      case 'l':
+        largeBreak = tmp;
+        if (largeBreak < 5) largeBreak = 5;
+        break;
+      case 'm':
+        maxWorkTime = tmp;
+        if (maxWorkTime > 180) maxWorkTime = 180;
+        if (maxWorkTime <  60) maxWorkTime =  60;
+        if (maxWorkTime < workTime) maxWorkTime = workTime;
+        break;
+    }
+  }
+  fclose(fid);
+  reloaded = 1;
+}
+
+int
+str_equal(const char * str1, const char * str2)
+{
+  int i = 0;
+  while (str1[i] == str2[i]) {
+    if (str1[i] == '\0') break;
+    if (str2[i] == '\0') break;
+    i++; /* By moving i++ to the end, empty strings are equal. */
+  }
+  return (str1[i] == str2[i]);
 }
 
 int
 main ( int argc, char *argv[] )
 {
+  /* install signal handlers */
   signal(SIGINT , signal_handler);
   signal(SIGTERM, signal_handler);
   signal(SIGQUIT, signal_handler);
 
-  // check arguments and get logfile handler
-  FILE *fid = check_arguments(argc, argv);
+  // initialize logFile
+  logFile = fopen(logFileName, "a");
+  if (logFile == NULL) {
+    fprintf(stderr, "Error: Cannot open log file /tmp/rseye.log!\nFall back to stderr!\n");
+    logFile = stderr;
+  } else {
+    setbuf(logFile, NULL);
+  }
+  fprintf(stderr, "Log file is %s\n", logFileName);
+
+  // load values from $HOME/.rseyerc if any
+  load_config();
+
+  // check arguments
+  check_arguments(argc, argv);
 
   // check if another instance has already been running and create pid file
   create_pid();
@@ -459,18 +597,21 @@ main ( int argc, char *argv[] )
   time_t endTime;
   time_t startTime = time(NULL);
   struct tm tm = *localtime(&startTime);
-  fprintf(fid, "\nrseye (pid = %u) starts on %s", getpid(), asctime(&tm));
-  fprintf(fid, "  WorkTime   = %d (minutes).\n", workTime);
-  fprintf(fid, "  SmallBreak = %d (seconds).\n", smallBreak);
-  fprintf(fid, "  LargeBreak = %d (minutes).\n", largeBreak);
-  fprintf(fid, "\n**** Start Logging! ****\n");
+  fprintf(logFile, "\nrseye (pid = %u) starts on %s", getpid(), asctime(&tm));
+  fprintf(logFile, "  WorkTime    = %d (minutes).\n", workTime);
+  fprintf(logFile, "  SmallBreak  = %d (seconds).\n", smallBreak);
+  fprintf(logFile, "  LargeBreak  = %d (minutes).\n", largeBreak);
+  fprintf(logFile, "  maxWorkTime = %d (minutes).\n", maxWorkTime);
+  fprintf(logFile, "\n**** Start Logging! ****\n");
 
-  mytime_t smallBreakCounter = 0;
-  mytime_t largeBreakCounter = 0;
-  const mytime_t numberSubWorkTime = 4;
-  const mytime_t subWorkTime = workTime*(60 / numberSubWorkTime);
-  mytime_t i = 0;
+  const mytime_t subWorkTime = 300;
   mytime_t suspendTime = 0;
+
+  unsigned int numberSubWorkTime = workTime*60/subWorkTime;
+  unsigned int maxWorkTimeNum = maxWorkTime/workTime;
+  unsigned int smallBreakCounter = 0;
+  unsigned int largeBreakCounter = 0;
+  unsigned int i = 0;
 
   // Predefined sleep function does account for system sleep which is
   // undesired. So, we need to use CLOCK_REALTIME.
@@ -485,19 +626,19 @@ main ( int argc, char *argv[] )
     // workTime = subWorkTime * numberSubWorkTime
     startTime = time(NULL);
     tm = *localtime(&startTime);
-    fprintf(fid, "\nWorkTimeNumber %d  started on %s", workTimeNumber, asctime(&tm));
+    fprintf(logFile, "\nWorkTimeNumber %d  started on %s", workTimeNumber, asctime(&tm));
     i = 0;
     while (i < numberSubWorkTime) {
       startTime = time(NULL);
       tm = *localtime(&startTime);
-      fprintf(fid, "   SubWorkTime %d  started on %s", i+1, asctime(&tm));
+      fprintf(logFile, "   SubWorkTime %d  started on %s", i+1, asctime(&tm));
       /*sleep(subWorkTime);*/
       clock_gettime(CLOCK_REALTIME, &tp);
       tp.tv_sec += subWorkTime;
       clock_nanosleep(CLOCK_REALTIME, TIMER_ABSTIME, &tp, NULL);
       endTime = time(NULL);
       tm = *localtime(&endTime);
-      fprintf(fid, "   SubWorkTime %d finished on %s", i+1, asctime(&tm));
+      fprintf(logFile, "   SubWorkTime %d finished on %s", i+1, asctime(&tm));
       suspendTime = (mytime_t)difftime(endTime, startTime) - subWorkTime;
 
       // If the system has been suspended for more than
@@ -511,51 +652,57 @@ main ( int argc, char *argv[] )
     // If the system has been suspended for longer than largeBreak, we
     // assume that largeBreak is done.
     if (suspendTime > largeBreak*60) {
-      fprintf(fid, "   SubWorkTime %d: the system has slept for %d hours %d minutes %d seconds which is more than largeBreak of %d minutes.\n", i+1, suspendTime/3600, suspendTime/60, suspendTime%60, largeBreak);
-      fprintf(fid, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
+      fprintf(logFile, "   SubWorkTime %d: the system has slept for %d hours %d minutes %d seconds which is more than largeBreak of %d minutes.\n", i+1, suspendTime/3600, (suspendTime/60)%60, suspendTime%60, largeBreak);
+      fprintf(logFile, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
       smallBreakCounter = 0;
       continue;
     }
 
-    fprintf(fid, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
+    fprintf(logFile, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
 
     // If the system has not been suspended for two long, continue as if
     // the system has never been suspended.
     smallBreakCounter++;
 
-    if (smallBreakCounter == 3) {
-      largeBreakCounter++;
-      smallBreakCounter = 0;
-      fprintf(fid, "\nLarge break number %d: let's take a break for %d minutes!\n", largeBreakCounter, largeBreak);
-
-      // Take a large break
-      suspendTime = lockscreen(largeBreak*60, 0);
-      if (suspendTime > 0) {
-        fprintf(fid, "During large break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, (suspendTime/60)%60, suspendTime%60);
-        smallBreakCounter = 0;
-      } else {
-        if (suspendTime < 0) {
-          postponeNumLarge++;
-          fprintf(fid, "You forcefully end a large break the %u-th times. Remaining time is %d minutes %d seconds.\n", postponeNumLarge, -suspendTime/60, -suspendTime%60);
-        }
-      }
-    } else {
-      fprintf(fid, "\nSmall break number %d(%d): let's take a break for %d seconds!\n", smallBreakCounter, largeBreakCounter, smallBreak);
+    if (smallBreakCounter < maxWorkTimeNum) {
+      fprintf(logFile, "\nSmall break number %d(%d): let's take a break for %d seconds!\n", smallBreakCounter, largeBreakCounter, smallBreak);
       // Take a small break
       suspendTime = lockscreen(smallBreak, 0);
       if (suspendTime > 0) {
-        fprintf(fid, "During small break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, (suspendTime/60)%60, suspendTime%60);
+        fprintf(logFile, "During small break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, (suspendTime/60)%60, suspendTime%60);
         if (suspendTime > largeBreak*60 - smallBreak) {
           smallBreakCounter = 0;
         }
       } else {
         if (suspendTime < 0) {
           postponeNumSmall++;
-          fprintf(fid, "You forcefully end a small break the %u-th times. Remaining time is %d seconds.\n", postponeNumSmall, -suspendTime);
+          fprintf(logFile, "You forcefully end a small break the %u-th times. Remaining time is %d seconds.\n", postponeNumSmall, -suspendTime);
+        }
+      }
+    } else {
+      largeBreakCounter++;
+      smallBreakCounter = 0;
+      fprintf(logFile, "\nLarge break number %d: let's take a break for %d minutes!\n", largeBreakCounter, largeBreak);
+
+      // Take a large break
+      suspendTime = lockscreen(largeBreak*60, 0);
+      if (suspendTime > 0) {
+        fprintf(logFile, "During large break, the system has slept for %d hours %d minutes %d seconds.\n", suspendTime/3600, (suspendTime/60)%60, suspendTime%60);
+        smallBreakCounter = 0;
+      } else {
+        if (suspendTime < 0) {
+          postponeNumLarge++;
+          fprintf(logFile, "You forcefully end a large break the %u-th times. Remaining time is %d minutes %d seconds.\n", postponeNumLarge, -suspendTime/60, -suspendTime%60);
         }
       }
     }
+    if (reloadRequested) {
+      load_config();
+      maxWorkTimeNum = maxWorkTime/workTime;
+      numberSubWorkTime = workTime*60/subWorkTime;
+      reloadRequested = 0;
+    }
   }
-  if (fid != NULL) fclose(fid);
+  if (logFile != stderr) fclose(logFile);
   return 0;
 }        /* ----------  end of function main  ---------- */
