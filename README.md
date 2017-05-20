@@ -44,33 +44,33 @@ Only _one_ instance of **rseye** can run at a time. When you start **rseye** if 
 
 _/etc/rseyerc.sample_
 
-Sample config file.
+* Sample config file.
 
 _$HOME/.rseyerc_
 
-This file is _optinal_. If it exists, **rseye** will load it at start, but values from this config file will be overrode by command line options. However, you can reload config file during breaks.
+* This file is _optinal_. If it exists, **rseye** will load it at start, but values from this config file will be overrode by command line options. However, you can reload config file during breaks.
 
 ## OPTIONS<a name="OPTIONS"></a>
 
 **-w** _worktime_
 
-This is the length (in minutes) of your working period. It will be rounded up to the nearest multiple of 5\. If _worktime_ is larger than 30, it will be set to 30\. Default value is 20 minutes.
+* This is the length (in minutes) of your working period. It will be rounded up to the nearest multiple of 5\. If _worktime_ is larger than 30, it will be set to 30\. Default value is 20 minutes.
 
 **-s** _smallbreak_
 
-This is the length (in seconds) of a small break between working periods. If it is larger than 120, it will be set to 120\. If it is smaller than 20, it will be set to 20\. Default value is 60 seconds.
+* This is the length (in seconds) of a small break between working periods. If it is larger than 120, it will be set to 120\. If it is smaller than 20, it will be set to 20\. Default value is 60 seconds.
 
 **-l** _largebreak_
 
-This is the length (in minutes) of a large break. If it is smaller than 5, it will be set to 5\. Default value is 8 minutes
+* This is the length (in minutes) of a large break. If it is smaller than 5, it will be set to 5\. Default value is 8 minutes
 
 **-o** _logfile_
 
-This file logs starting and ending times for work periods and breaks. Default value is _/tmp/rseye.log_. If everything fails, it falls back to _stderr_.
+* This file logs starting and ending times for work periods and breaks. Default value is _/tmp/rseye.log_. If everything fails, it falls back to _stderr_.
 
 **-m** _maxworktime_
 
-This is the allowable maximum value (in minutes) for the accumulative sum of worktime between two consecutive largebreaks. If it is larger than 180 (which is 3 hours), it will be set to 180\. If it is smaller than _min_(_worktime_, _60_), it is set to _min_(_worktime_, _60_). Default value is 60 minutes.
+* This is the allowable maximum value (in minutes) for the accumulative sum of worktime between two consecutive largebreaks. If it is larger than 180 (which is 3 hours), it will be set to 180\. If it is smaller than _min_(_worktime_, _60_), it is set to _min_(_worktime_, _60_). Default value is 60 minutes.
 
 ## COMMANDS<a name="COMMANDS"></a>
 
