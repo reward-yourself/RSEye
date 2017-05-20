@@ -66,11 +66,11 @@ _$HOME/.rseyerc_
 
 **-o** _logfile_
 
-* This file logs starting and ending times for work periods and breaks. Default value is _/tmp/rseye.log_. If everything fails, it falls back to _stderr_.
+* This file logs starting and ending times for work periods and breaks. Default value is `/tmp/rseye.log`. If everything fails, it falls back to `stderr`.
 
 **-m** _maxworktime_
 
-* This is the allowable maximum value (in minutes) for the accumulative sum of worktime between two consecutive largebreaks. If it is larger than 180 (which is 3 hours), it will be set to 180\. If it is smaller than _min_(_worktime_, _60_), it is set to _min_(_worktime_, _60_). Default value is 60 minutes.
+* This is the allowable maximum value (in minutes) for the accumulative sum of worktime between two consecutive largebreaks. If it is larger than 180 (which is 3 hours), it will be set to 180\. If it is smaller than `min(worktime, 60)`, it is set to `min(worktime, 60)`. Default value is 60 minutes.
 
 ## COMMANDS<a name="COMMANDS"></a>
 
