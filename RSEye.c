@@ -37,6 +37,7 @@ void check_arguments(int argc, char **argv);
 int str_equal(const char * str1, const char * str2);
 
 // non-blocking check if keyboard is hit
+// https://linux.die.net/man/2/select
 int kbhit() 
 {
   fd_set fds;
@@ -67,7 +68,7 @@ lockscreen(mytime_t lengthOfBreak, int screen)
   time_t startTime, endTime;
   mytime_t actualTime;
   if (dpy == NULL) {
-    fprintf(stderr, "Cannot connect to X server! Sleep for %d seconds now!\n", lengthOfBreak);
+    fprintf(logFile, "Cannot connect to X server! Sleep for %d seconds now!\n", lengthOfBreak);
     startTime = time(NULL);
     struct timespec tp;
     clock_gettime(CLOCK_REALTIME, &tp);
@@ -184,7 +185,8 @@ lockscreen(mytime_t lengthOfBreak, int screen)
     while (tmp) {
       if (tmp & 1) {
         colorPick[set] = 3;
-      } else colorPick[set] = 2;
+      } else 
+        colorPick[set] = 2;
       set++;
       tmp >>= 1;
     }
@@ -256,13 +258,14 @@ die(const char *errmsg, ...)
 {
   va_list ap;
   va_start(ap, errmsg);
-  vfprintf(stderr, errmsg, ap);
+  vfprintf(logFile, errmsg, ap);
   va_end(ap);
-  fprintf(stderr, "Usage: \n\t\trseye -w worktime -s smallbreak -l largebreak -o logfile\n\n");
-  fprintf(stderr, "\t-w  worktime   \tThe time in minutes between consecutive breaks. Default value is 20 minutes.\n");
-  fprintf(stderr, "\t-s  smallbreak \tThe length in seconds of a small break. Default value is 60 seconds.\n");
-  fprintf(stderr, "\t-l  largebreak \tThe length in minutes of a large break. Default value is 8 minutes.\n");
-  fprintf(stderr, "\t-o  logfile    \tRecord starting and ending time for working times and breaks. Default value is /tmp/rseye.log.\n");
+  fprintf(logFile, "Usage: \n\t\trseye -w worktime -s smallbreak -l largebreak -o logfile\n\n");
+  fprintf(logFile, "\t-w  worktime   \tThe time in minutes between consecutive breaks. Default value is 20 minutes.\n");
+  fprintf(logFile, "\t-s  smallbreak \tThe length in seconds of a small break. Default value is 60 seconds.\n");
+  fprintf(logFile, "\t-l  largebreak \tThe length in minutes of a large break. Default value is 8 minutes.\n");
+  fprintf(logFile, "\t-o  logfile    \tRecord starting and ending time for working times and breaks. Default value is /tmp/rseye.log.\n");
+  if (logFile != stderr) fclose(logFile);
   exit(1);
 }
 
@@ -299,7 +302,7 @@ signal_handler(int sig)
     case SIGTERM:
     case SIGQUIT:
       fprintf(logFile, "\nAborting rseye (pid = %u) due to %s signal!\n", getpid(), pidstr);
-      if ((logFile != NULL) && (logFile != stderr)) fclose(logFile);
+      if (logFile != stderr) fclose(logFile);
       fid = NULL;
       fid = fopen("/tmp/rseye.pid", "r");
       if (fid != NULL) {
@@ -366,13 +369,15 @@ void
 change_logfile(const char * path)
 {
   FILE * flog = NULL;
-  if (str_equal(path, "stderr")) flog = stderr;
-  else fopen(path, "a");
+  if (str_equal(path, "stderr")) 
+    flog = stderr;
+  else 
+    flog = fopen(path, "a");
   if (flog == NULL) {
-    fprintf(stderr, "Error: Cannot open log file %s!\nFall back to %s!\n", path, logFileName);
+    fprintf(logFile, "Error: Cannot open log file %s!\nFall back to %s!\n", path, logFileName);
     return;
   }
-  if (logFile != stderr) setbuf(flog, NULL);
+  if (flog != stderr) setbuf(flog, NULL);
   time_t startTime = time(NULL);
   struct tm tm = *localtime(&startTime);
   fprintf(logFile, "%slog file is changed to: \n%s\n", asctime(&tm), path);
@@ -390,8 +395,6 @@ change_logfile(const char * path)
 void
 check_arguments(int argc, char **argv)
 {
-  FILE * fid = NULL;
-
   if (~argc & 1) die("\nError: Invalid number of arguments!\n");
   if (argc > MAX_CML_ARGS) {
     die("\nError: Too many arguments!\n");
@@ -400,17 +403,13 @@ check_arguments(int argc, char **argv)
     argc--; argv++;
     if (argv[0][0] != '-') die("\nError: Something is wrong with the arguments!\n");
     if (argv[0][1] == '\0') die("\nError: Something is wrong with the arguments!\n");
-    if (argv[0][2] != '\0') {
-      if (fid != NULL) fclose(fid);
-      die("\nError: Invalid arguments!\n");
-    }
+    if (argv[0][2] != '\0') die("\nError: Invalid arguments!\n");
 
     char argv_ = argv[0][1];
     argv++, argc--;
 
     int val = atoi(argv[0]);
     if ((val <= 0) && argv_ != 'o') {
-      if (fid != NULL) fclose(fid);
       die("\nError: Time values must be positive integers!\n");
     }
 
@@ -439,7 +438,6 @@ check_arguments(int argc, char **argv)
         if(!str_equal(argv[0], logFileName)) change_logfile(argv[0]);
         break;
       default:
-        if (fid != NULL) fclose(fid);
         die("\nError: Invalid arguments!\n");
     }
   }
@@ -455,8 +453,8 @@ load_config()
   int i = 0, len = 0, strlen = 0;
   while (home[len] != '\0') len++;
   if (len + 10 > F_NAME_MAX) {
-    fprintf(stderr, "Error: Cannot load config -- $HOME/.rseyerc path is too long (len($HOME/.rseyerc) = %d).\n", len + 10);
-    fprintf(stderr, "Please increase F_NAME_MAX in global.h and recompile!\n");
+    fprintf(logFile, "Error: Cannot load config -- $HOME/.rseyerc path is too long (len($HOME/.rseyerc) = %d).\n", len + 10);
+    fprintf(logFile, "Please increase F_NAME_MAX in global.h and recompile!\n");
     return;
   }
   for (i = 0; i < 10; ++i) {
@@ -486,8 +484,8 @@ load_config()
       if (str[2] == '~') {
         strlen--;
         if (len + strlen + 1 > F_NAME_MAX) {
-          fprintf(stderr, "Error: Path is too long (len(Path) = %d).\n Please increase F_NAME_MAX and recompile!\n", len + strlen);
-          fprintf(stderr, "Path: %s/%s\n", home, str);
+          fprintf(logFile, "Error: Path is too long (len(Path) = %d).\n Please increase F_NAME_MAX and recompile!\n", len + strlen);
+          fprintf(logFile, "Path: %s/%s\n", home, str);
           return;
         }
         // now append $HOME to the beginning of str
@@ -503,7 +501,7 @@ load_config()
       if (!str_equal(path, logFileName)) change_logfile(path);
 
       if (reloaded) {
-        fprintf(logFile, "\nrseye (pid = %u): reloaded values are as follows.", getpid());
+        fprintf(logFile, "\nrseye (pid = %u): reloaded values are as follows.\n", getpid());
         fprintf(logFile, "  WorkTime    = %d (minutes).\n", workTime);
         fprintf(logFile, "  SmallBreak  = %d (seconds).\n", smallBreak);
         fprintf(logFile, "  LargeBreak  = %d (minutes).\n", largeBreak);
@@ -578,8 +576,9 @@ main ( int argc, char *argv[] )
   // initialize logFile
   logFile = fopen(logFileName, "a");
   if (logFile == NULL) {
-    fprintf(stderr, "Error: Cannot open log file /tmp/rseye.log!\nFall back to stderr!\n");
     logFile = stderr;
+    sprintf(logFileName, "stderr");
+    fprintf(logFile, "Error: Cannot open log file /tmp/rseye.log!\nFall back to stderr!\n");
   } else {
     setbuf(logFile, NULL);
   }
@@ -663,6 +662,7 @@ main ( int argc, char *argv[] )
     // If the system has not been suspended for two long, continue as if
     // the system has never been suspended.
     smallBreakCounter++;
+    fprintf(logFile, "smallBreakCounter = %d\n", smallBreakCounter);
 
     if (smallBreakCounter < maxWorkTimeNum) {
       fprintf(logFile, "\nSmall break number %d(%d): let's take a break for %d seconds!\n", smallBreakCounter, largeBreakCounter, smallBreak);
@@ -681,6 +681,7 @@ main ( int argc, char *argv[] )
       }
     } else {
       largeBreakCounter++;
+      fprintf(logFile, "largeBreakCounter = %d\n", largeBreakCounter);
       smallBreakCounter = 0;
       fprintf(logFile, "\nLarge break number %d: let's take a break for %d minutes!\n", largeBreakCounter, largeBreak);
 
