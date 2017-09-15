@@ -653,7 +653,17 @@ main ( int argc, char *argv[] )
     if (suspendTime > largeBreak*60) {
       fprintf(logFile, "   SubWorkTime %d: the system has slept for %d hours %d minutes %d seconds which is more than largeBreak of %d minutes.\n", i+1, suspendTime/3600, (suspendTime/60)%60, suspendTime%60, largeBreak);
       fprintf(logFile, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
+      largeBreakCounter++;
       smallBreakCounter = 0;
+      continue;
+    }
+
+    // If the system has been suspended for longer than smallBreak, we
+    // assume that smallBreak is done.
+    if (suspendTime > smallBreak) {
+      fprintf(logFile, "   SubWorkTime %d: the system has slept for %d hours %d minutes %d seconds which is more than smallBreak of %d minutes.\n", i+1, suspendTime/3600, (suspendTime/60)%60, suspendTime%60, smallBreak);
+      fprintf(logFile, "WorkTimeNumber %d finished on %s", workTimeNumber, asctime(&tm));
+      smallBreakCounter++;
       continue;
     }
 
